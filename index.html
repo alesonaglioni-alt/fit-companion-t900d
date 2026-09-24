@@ -133,6 +133,21 @@
     <div class="empty-state" id="templateEmpty">Nessun allenamento salvato ancora. Registrane uno nella scheda "Registra".</div>
   </div>
 
+  <div class="card" id="stepEditorCard" hidden>
+    <h2 id="stepEditorTitle">Modifica allenamento</h2>
+    <div class="row">
+      <input type="text" id="editTemplateName" placeholder="Nome allenamento" style="flex:1">
+    </div>
+    <div id="editSteps"></div>
+    <div class="row">
+      <button class="btn secondary" id="btnAddEditStep" type="button">+ Aggiungi step</button>
+    </div>
+    <div class="row">
+      <button class="btn secondary" id="btnCancelEdit" type="button">Annulla</button>
+      <button class="btn" id="btnConfirmEdit" type="button" style="flex:1">Conferma</button>
+    </div>
+  </div>
+
   <div class="card" id="executionCard" hidden>
     <h2>Allenamento in corso <span class="badge" id="execModeBadge">&mdash;</span></h2>
     <div class="big-metric">

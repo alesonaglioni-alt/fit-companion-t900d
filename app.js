@@ -377,14 +377,18 @@ function renderTemplateList() {
         <button class="btn secondary" data-act="start">Avvia uguale</button>
         <input type="number" value="10" min="1" max="100" style="width:60px" data-role="pct">
         <button class="btn" data-act="startpct">Avvia pi&ugrave; difficile</button>
+      </div>
+      <div class="row">
+        <button class="btn secondary" data-act="edit">Modifica</button>
         <button class="btn danger" data-act="delete">Elimina</button>
       </div>
     `;
     div.querySelector('[data-act="start"]').addEventListener('click', () => startExecution(tpl, 1, 'both'));
     div.querySelector('[data-act="startpct"]').addEventListener('click', () => {
       const pct = parseFloat(div.querySelector('[data-role="pct"]').value) || 10;
-      startExecution(tpl, 1 + pct / 100, 'both');
+      openStepEditor('start', tpl, scaleSteps(tpl.steps, 1 + pct / 100, 'both'));
     });
+    div.querySelector('[data-act="edit"]').addEventListener('click', () => openStepEditor('edit', tpl, tpl.steps));
     div.querySelector('[data-act="delete"]').addEventListener('click', () => {
       saveTemplates(loadTemplates().filter(t => t.id !== tpl.id));
       renderTemplateList();
@@ -420,8 +424,7 @@ function beep() {
   } catch (e) { /* audio non disponibile, non bloccante */ }
 }
 
-function startExecution(template, factor, target) {
-  const steps = factor !== 1 ? scaleSteps(template.steps, factor, target) : template.steps;
+function startExecutionWithSteps(steps) {
   const mode = state.controlWritable === true ? 'auto' : 'guided';
   state.execution = { steps, idx: -1, mode, timerId: null, remaining: 0, beeped: false };
 
@@ -432,6 +435,78 @@ function startExecution(template, factor, target) {
   if (mode === 'auto') cmdStart();
   nextStep();
   state.execution.timerId = setInterval(tickExecution, 1000);
+  $('executionCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function startExecution(template, factor, target) {
+  const steps = factor !== 1 ? scaleSteps(template.steps, factor, target) : template.steps;
+  startExecutionWithSteps(steps);
+}
+
+// ===== Editor step riutilizzabile: modifica un allenamento salvato, o anteprima "avvia più difficile" =====
+let stepEditorState = null; // { mode: 'edit' | 'start', templateId }
+
+function renderEditStepRow(container, durationMin, speed, incline) {
+  const row = document.createElement('div');
+  row.className = 'row builder-step';
+  row.innerHTML = `
+    <input type="number" class="stepDuration" value="${durationMin}" min="0.1" step="0.5" style="width:70px"> min
+    <input type="number" class="stepSpeed" value="${speed}" min="0" step="0.1" style="width:70px"> km/h
+    <input type="number" class="stepIncline" value="${incline}" min="0" step="0.5" style="width:70px"> %
+    <button class="btn danger" type="button">&#10005;</button>
+  `;
+  row.querySelector('button').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+function readStepsFromContainer(container) {
+  const rows = container.querySelectorAll('.builder-step');
+  return Array.from(rows).map(row => ({
+    durationSec: Math.round(parseFloat(row.querySelector('.stepDuration').value) * 60),
+    speedKmh: parseFloat(row.querySelector('.stepSpeed').value),
+    inclinePct: parseFloat(row.querySelector('.stepIncline').value)
+  })).filter(s => s.durationSec > 0 && !isNaN(s.speedKmh) && !isNaN(s.inclinePct));
+}
+
+function openStepEditor(mode, template, steps) {
+  stepEditorState = { mode, templateId: template.id };
+  $('stepEditorTitle').textContent = mode === 'edit' ? 'Modifica allenamento' : 'Anteprima: avvia più difficile';
+  $('editTemplateName').value = template.name;
+  $('editTemplateName').disabled = (mode !== 'edit');
+
+  const container = $('editSteps');
+  container.innerHTML = '';
+  steps.forEach(s => renderEditStepRow(container, Math.round((s.durationSec / 60) * 100) / 100, s.speedKmh, s.inclinePct));
+
+  $('btnConfirmEdit').textContent = mode === 'edit' ? 'Salva modifiche' : 'Avvia';
+  $('stepEditorCard').hidden = false;
+  $('stepEditorCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeStepEditor() {
+  $('stepEditorCard').hidden = true;
+  stepEditorState = null;
+}
+
+function confirmStepEditor() {
+  const steps = readStepsFromContainer($('editSteps'));
+  if (!steps.length) { log('Aggiungi almeno uno step valido.', 'err'); return; }
+
+  if (stepEditorState.mode === 'edit') {
+    const name = $('editTemplateName').value.trim() || 'Allenamento';
+    const list = loadTemplates();
+    const idx = list.findIndex(t => t.id === stepEditorState.templateId);
+    if (idx !== -1) {
+      list[idx] = Object.assign({}, list[idx], { name, steps });
+      saveTemplates(list);
+      log(`Allenamento "${name}" aggiornato.`);
+    }
+    closeStepEditor();
+    renderTemplateList();
+  } else {
+    closeStepEditor();
+    startExecutionWithSteps(steps);
+  }
 }
 
 function nextStep() {
@@ -496,6 +571,10 @@ $('btnStopExecution').addEventListener('click', () => stopExecution(false));
 $('btnAddBuilderStep').addEventListener('click', () => addBuilderStepRow());
 $('btnSaveBuilder').addEventListener('click', saveBuilderTemplate);
 addBuilderStepRow();
+
+$('btnAddEditStep').addEventListener('click', () => renderEditStepRow($('editSteps'), 5, 5.0, 0));
+$('btnCancelEdit').addEventListener('click', closeStepEditor);
+$('btnConfirmEdit').addEventListener('click', confirmStepEditor);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js').catch(e => log('Service worker non registrato: ' + e.message, 'err'));
