@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Test FTMS - Domyos T900D</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #12141a;
+    color: #e6e8ec;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 20px 16px 60px;
+  }
+  h1 { font-size: 1.3rem; margin-bottom: 4px; }
+  p.sub { color: #9aa0ab; margin-top: 0; font-size: 0.9rem; }
+  section {
+    background: #1b1e27;
+    border: 1px solid #2a2e3a;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  h2 { font-size: 1rem; margin: 0 0 10px; color: #cfd3dc; }
+  .status { font-weight: 600; }
+  .status.ok { color: #4ade80; }
+  .status.bad { color: #f87171; }
+  .status.warn { color: #fbbf24; }
+  button {
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    margin: 4px 6px 4px 0;
+  }
+  button:disabled { background: #374151; color: #6b7280; cursor: not-allowed; }
+  button.danger { background: #b91c1c; }
+  input[type=number] {
+    background: #0f1117;
+    border: 1px solid #2a2e3a;
+    color: #e6e8ec;
+    border-radius: 6px;
+    padding: 8px 10px;
+    width: 90px;
+    font-size: 0.95rem;
+  }
+  label { display: inline-block; margin-right: 6px; color: #9aa0ab; font-size: 0.85rem; }
+  .row { margin-bottom: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .telemetry { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  .tile { background: #0f1117; border-radius: 8px; padding: 8px 10px; }
+  .tile .label { font-size: 0.7rem; color: #9aa0ab; text-transform: uppercase; letter-spacing: 0.03em; }
+  .tile .value { font-size: 1.1rem; font-weight: 600; }
+  #log {
+    background: #0a0b0f;
+    border-radius: 8px;
+    padding: 10px;
+    height: 260px;
+    overflow-y: auto;
+    font-family: "Consolas", "SFMono-Regular", monospace;
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .log-line { margin-bottom: 3px; }
+  .log-line.rx { color: #93c5fd; }
+  .log-line.tx { color: #fcd34d; }
+  .log-line.err { color: #f87171; }
+  .log-line.info { color: #9aa0ab; }
+</style>
+</head>
+<body>
+
+<h1>Test FTMS &mdash; Domyos T900D</h1>
+<p class="sub">
+  Pagina diagnostica: verifica se il tapis roulant risponde ai comandi FTMS (velocità/inclinazione)
+  o se espone solo la telemetria in lettura. Apri questo file direttamente in <strong>Chrome</strong> (desktop),
+  vicino al tapis roulant, con il Bluetooth attivo.
+</p>
+
+<section>
+  <h2>1. Connessione</h2>
+  <div class="row">
+    <button id="btnConnect">Connetti al tapis roulant</button>
+    <button id="btnDisconnect" disabled>Disconnetti</button>
+    <span id="connStatus" class="status">Non connesso</span>
+  </div>
+</section>
+
+<section>
+  <h2>2. Dati live (Treadmill Data — lettura)</h2>
+  <div class="telemetry">
+    <div class="tile"><div class="label">Velocità</div><div class="value" id="tSpeed">&mdash;</div></div>
+    <div class="tile"><div class="label">Inclinazione</div><div class="value" id="tIncline">&mdash;</div></div>
+    <div class="tile"><div class="label">Distanza</div><div class="value" id="tDistance">&mdash;</div></div>
+    <div class="tile"><div class="label">Tempo trascorso</div><div class="value" id="tElapsed">&mdash;</div></div>
+    <div class="tile"><div class="label">Calorie</div><div class="value" id="tCalories">&mdash;</div></div>
+    <div class="tile"><div class="label">Battito</div><div class="value" id="tHr">&mdash;</div></div>
+  </div>
+</section>
+
+<section>
+  <h2>3. Comandi (Control Point — scrittura, DA VERIFICARE)</h2>
+  <div class="row">
+    <button id="btnRequestControl" disabled>1. Request Control</button>
+    <button id="btnStart" disabled>Start / Resume</button>
+    <button id="btnStop" disabled class="danger">Stop</button>
+  </div>
+  <div class="row">
+    <label>Velocità target (km/h)</label>
+    <input type="number" id="inSpeed" min="0" max="20" step="0.1" value="4.0">
+    <button id="btnSetSpeed" disabled>Imposta velocità</button>
+  </div>
+  <div class="row">
+    <label>Inclinazione target (%)</label>
+    <input type="number" id="inIncline" min="0" max="15" step="0.5" value="1.0">
+    <button id="btnSetIncline" disabled>Imposta inclinazione</button>
+  </div>
+  <p class="sub" style="margin-top:8px;">
+    Premi prima <strong>Request Control</strong>: se il tapis roulant supporta davvero il comando,
+    dovresti vedere una riga "Response: Success" nel log qui sotto. Se ottieni "Control Not Permitted"
+    o nessuna risposta, il Control Point non è scrivibile su questo dispositivo.
+  </p>
+</section>
+
+<section>
+  <h2>4. Log eventi (bytes grezzi + interpretazione)</h2>
+  <div id="log"></div>
+</section>
+
+<script>
+const FTMS_SERVICE = 0x1826;
+const TREADMILL_DATA_CHAR = 0x2acd;
+const CONTROL_POINT_CHAR = 0x2ad9;
+
+let device = null;
+let server = null;
+let controlPointChar = null;
+
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  const line = document.createElement('div');
+  line.className = 'log-line ' + (cls || 'info');
+  const time = new Date().toLocaleTimeString('it-IT', { hour12: false });
+  line.textContent = `[${time}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function bytesToHex(dataView) {
+  let out = [];
+  for (let i = 0; i < dataView.byteLength; i++) {
+    out.push(dataView.getUint8(i).toString(16).padStart(2, '0'));
+  }
+  return out.join(' ');
+}
+
+function setStatus(text, kind) {
+  const el = document.getElementById('connStatus');
+  el.textContent = text;
+  el.className = 'status ' + (kind || '');
+}
+
+function setControlsEnabled(enabled) {
+  ['btnRequestControl', 'btnStart', 'btnStop', 'btnSetSpeed', 'btnSetIncline'].forEach(id => {
+    document.getElementById(id).disabled = !enabled;
+  });
+}
+
+// --- Parsing Treadmill Data (0x2ACD) secondo spec Bluetooth FTMS ---
+function parseTreadmillData(dataView) {
+  let offset = 0;
+  const flags = dataView.getUint16(offset, true); offset += 2;
+  log(`RX Treadmill Data — flags=0x${flags.toString(16).padStart(4,'0')} bytes=[${bytesToHex(dataView)}]`, 'rx');
+
+  const hasFlag = bit => (flags & (1 << bit)) !== 0;
+
+  // Bit 0 = "More Data": se 0, la velocità istantanea È presente (unico flag invertito)
+  if (!hasFlag(0)) {
+    const speed = dataView.getUint16(offset, true) / 100; offset += 2;
+    document.getElementById('tSpeed').textContent = speed.toFixed(2) + ' km/h';
+  }
+  if (hasFlag(1)) { offset += 2; } // Average Speed (non mostrata)
+  if (hasFlag(2)) {
+    const b0 = dataView.getUint8(offset);
+    const b1 = dataView.getUint8(offset + 1);
+    const b2 = dataView.getUint8(offset + 2);
+    const distance = b0 | (b1 << 8) | (b2 << 16);
+    offset += 3;
+    document.getElementById('tDistance').textContent = distance + ' m';
+  }
+  if (hasFlag(3)) {
+    const incline = dataView.getInt16(offset, true) / 10; offset += 2;
+    offset += 2; // Ramp Angle Setting, non mostrato
+    document.getElementById('tIncline').textContent = incline.toFixed(1) + ' %';
+  }
+  if (hasFlag(4)) { offset += 4; } // Elevation gain (+/-)
+  if (hasFlag(5)) { offset += 1; } // Instantaneous Pace
+  if (hasFlag(6)) { offset += 1; } // Average Pace
+  if (hasFlag(7)) {
+    const totalEnergy = dataView.getUint16(offset, true); offset += 2;
+    offset += 2; // Energy per hour
+    offset += 1; // Energy per minute
+    document.getElementById('tCalories').textContent = totalEnergy + ' kcal';
+  }
+  if (hasFlag(8)) {
+    const hr = dataView.getUint8(offset); offset += 1;
+    document.getElementById('tHr').textContent = hr + ' bpm';
+  }
+  if (hasFlag(9)) { offset += 1; } // MET
+  if (hasFlag(10)) {
+    const elapsed = dataView.getUint16(offset, true); offset += 2;
+    document.getElementById('tElapsed').textContent = elapsed + ' s';
+  }
+  if (hasFlag(11)) { offset += 2; } // Remaining time
+  if (hasFlag(12)) { offset += 4; } // Force on belt + power
+}
+
+function onTreadmillData(event) {
+  try {
+    parseTreadmillData(event.target.value);
+  } catch (e) {
+    log('Errore nel parsing dei dati: ' + e.message, 'err');
+  }
+}
+
+const RESULT_CODES = {
+  1: 'Success',
+  2: 'Op Code Not Supported',
+  3: 'Invalid Parameter',
+  4: 'Operation Failed',
+  5: 'Control Not Permitted'
+};
+
+function onControlPointResponse(event) {
+  const dv = event.target.value;
+  log(`RX Control Point response — bytes=[${bytesToHex(dv)}]`, 'rx');
+  if (dv.byteLength >= 3 && dv.getUint8(0) === 0x80) {
+    const requestOpCode = dv.getUint8(1);
+    const resultCode = dv.getUint8(2);
+    const resultText = RESULT_CODES[resultCode] || `Sconosciuto (${resultCode})`;
+    const kind = resultCode === 1 ? 'rx' : 'err';
+    log(`  -> Risposta al comando 0x${requestOpCode.toString(16)}: ${resultText}`, kind);
+  }
+}
+
+async function connect() {
+  try {
+    log('Apro il selettore dispositivi Bluetooth...', 'info');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [
+        { services: [FTMS_SERVICE] },
+        { namePrefix: 'domyos-tc-' } // prefisso nome BLE usato dai tapis roulant Domyos (scoperto dall'SDK di Kinomap)
+      ],
+      optionalServices: [FTMS_SERVICE]
+    });
+    log(`Dispositivo selezionato: ${device.name || '(senza nome)'}`, 'info');
+
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+
+    server = await device.gatt.connect();
+    const service = await server.getPrimaryService(FTMS_SERVICE);
+
+    const treadmillChar = await service.getCharacteristic(TREADMILL_DATA_CHAR);
+    await treadmillChar.startNotifications();
+    treadmillChar.addEventListener('characteristicvaluechanged', onTreadmillData);
+    log('Sottoscritto a Treadmill Data (0x2ACD).', 'info');
+
+    try {
+      controlPointChar = await service.getCharacteristic(CONTROL_POINT_CHAR);
+      await controlPointChar.startNotifications();
+      controlPointChar.addEventListener('characteristicvaluechanged', onControlPointResponse);
+      log('Control Point (0x2AD9) trovato e sottoscritto per le risposte.', 'info');
+      setControlsEnabled(true);
+    } catch (e) {
+      log('Control Point (0x2AD9) NON disponibile su questo dispositivo: ' + e.message, 'err');
+      setControlsEnabled(false);
+    }
+
+    setStatus('Connesso a ' + (device.name || 'tapis roulant'), 'ok');
+    document.getElementById('btnConnect').disabled = true;
+    document.getElementById('btnDisconnect').disabled = false;
+  } catch (e) {
+    log('Errore di connessione: ' + e.message, 'err');
+    setStatus('Connessione fallita', 'bad');
+  }
+}
+
+function onDisconnected() {
+  setStatus('Disconnesso', 'warn');
+  document.getElementById('btnConnect').disabled = false;
+  document.getElementById('btnDisconnect').disabled = true;
+  setControlsEnabled(false);
+  log('Dispositivo disconnesso.', 'info');
+}
+
+function disconnect() {
+  if (device && device.gatt.connected) {
+    device.gatt.disconnect();
+  }
+}
+
+async function writeControlPoint(bytes, label) {
+  if (!controlPointChar) {
+    log('Control Point non disponibile, impossibile inviare: ' + label, 'err');
+    return;
+  }
+  try {
+    const buf = new Uint8Array(bytes);
+    log(`TX ${label} — bytes=[${bytesToHex(new DataView(buf.buffer))}]`, 'tx');
+    await controlPointChar.writeValueWithResponse(buf);
+  } catch (e) {
+    log(`Errore inviando "${label}": ${e.message}`, 'err');
+  }
+}
+
+function requestControl() {
+  writeControlPoint([0x00], 'Request Control');
+}
+
+function setTargetSpeed() {
+  const kmh = parseFloat(document.getElementById('inSpeed').value);
+  const raw = Math.round(kmh * 100); // risoluzione 0.01 km/h
+  writeControlPoint([0x02, raw & 0xff, (raw >> 8) & 0xff], `Set Target Speed (${kmh} km/h)`);
+}
+
+function setTargetIncline() {
+  const pct = parseFloat(document.getElementById('inIncline').value);
+  let raw = Math.round(pct * 10); // risoluzione 0.1%
+  if (raw < 0) raw = 0x10000 + raw; // complemento a 2 su 16 bit se negativo
+  writeControlPoint([0x03, raw & 0xff, (raw >> 8) & 0xff], `Set Target Inclination (${pct} %)`);
+}
+
+function start() {
+  writeControlPoint([0x07], 'Start / Resume');
+}
+
+function stop() {
+  writeControlPoint([0x08, 0x01], 'Stop');
+}
+
+document.getElementById('btnConnect').addEventListener('click', connect);
+document.getElementById('btnDisconnect').addEventListener('click', disconnect);
+document.getElementById('btnRequestControl').addEventListener('click', requestControl);
+document.getElementById('btnSetSpeed').addEventListener('click', setTargetSpeed);
+document.getElementById('btnSetIncline').addEventListener('click', setTargetIncline);
+document.getElementById('btnStart').addEventListener('click', start);
+document.getElementById('btnStop').addEventListener('click', stop);
+
+if (!navigator.bluetooth) {
+  setStatus('Web Bluetooth non disponibile in questo browser (usa Chrome/Edge desktop)', 'bad');
+  document.getElementById('btnConnect').disabled = true;
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1117">
+<title>Fit Companion T900D</title>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+
+<header>
+  <h1>Fit Companion &mdash; T900D</h1>
+  <div class="status-line">
+    <span class="dot" id="connDot"></span>
+    <span id="connText">Non connesso</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button data-screen="live" class="active">Live</button>
+  <button data-screen="record">Registra</button>
+  <button data-screen="library">Allenamenti</button>
+</nav>
+
+<!-- SCHERMATA: LIVE / CONNESSIONE -->
+<section id="screen-live" class="screen active">
+  <div class="card">
+    <h2>Connessione</h2>
+    <div class="row">
+      <button class="btn block" id="btnConnect">Connetti al tapis roulant</button>
+      <button class="btn secondary block" id="btnDisconnect" disabled>Disconnetti</button>
+    </div>
+    <div class="status-line" id="controlModeText">Modalit&agrave; controllo: sconosciuta</div>
+  </div>
+
+  <div class="card">
+    <h2>Dati live</h2>
+    <div class="telemetry-grid">
+      <div class="tile"><div class="label">Velocit&agrave;</div><div class="value" id="tSpeed">&mdash;</div></div>
+      <div class="tile"><div class="label">Inclinazione</div><div class="value" id="tIncline">&mdash;</div></div>
+      <div class="tile"><div class="label">Distanza</div><div class="value" id="tDistance">&mdash;</div></div>
+      <div class="tile"><div class="label">Tempo</div><div class="value" id="tElapsed">&mdash;</div></div>
+      <div class="tile"><div class="label">Calorie</div><div class="value" id="tCalories">&mdash;</div></div>
+      <div class="tile"><div class="label">Battito</div><div class="value" id="tHr">&mdash;</div></div>
+    </div>
+  </div>
+
+  <div class="card" id="manualControlCard" hidden>
+    <h2>Controllo manuale</h2>
+    <div class="row">
+      <button class="btn secondary" id="btnStart">Start/Resume</button>
+      <button class="btn danger" id="btnStop">Stop</button>
+    </div>
+    <div class="row">
+      <input type="number" id="inSpeed" step="0.1" min="0" max="20" value="4.0" style="width:90px">
+      <button class="btn secondary" id="btnSetSpeed">Imposta velocit&agrave; (km/h)</button>
+    </div>
+    <div class="row">
+      <input type="number" id="inIncline" step="0.5" min="0" max="15" value="1.0" style="width:90px">
+      <button class="btn secondary" id="btnSetIncline">Imposta inclinazione (%)</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Log</h2>
+    <div class="log-box" id="log"></div>
+  </div>
+</section>
+
+<!-- SCHERMATA: REGISTRAZIONE -->
+<section id="screen-record" class="screen">
+  <div class="card" id="recordIdleCard">
+    <h2>Registra un allenamento libero</h2>
+    <p class="step-preview">
+      Avvia la registrazione, poi regola manualmente velocit&agrave; e inclinazione (sui tasti fisici del tapis roulant,
+      o da qui se il controllo remoto &egrave; disponibile). L'app registra ogni cambiamento in tempo reale.
+    </p>
+    <button class="btn block" id="btnStartRecording" disabled>Inizia registrazione</button>
+    <p class="step-preview" id="recordDisabledHint">Connettiti al tapis roulant dalla scheda Live per iniziare.</p>
+  </div>
+
+  <div class="card" id="recordActiveCard" hidden>
+    <div class="big-metric">
+      <div class="value" id="recElapsed">00:00</div>
+      <div class="label">Registrazione in corso &mdash; <span id="recStepCount">0</span> cambi rilevati</div>
+    </div>
+    <div class="telemetry-grid">
+      <div class="tile"><div class="label">Velocit&agrave; ora</div><div class="value" id="recSpeed">&mdash;</div></div>
+      <div class="tile"><div class="label">Inclinazione ora</div><div class="value" id="recIncline">&mdash;</div></div>
+    </div>
+    <button class="btn danger block" id="btnStopRecording" style="margin-top:10px">Ferma registrazione</button>
+  </div>
+
+  <div class="card" id="saveChoiceCard" hidden>
+    <h2>Allenamento terminato</h2>
+    <p class="step-preview" id="saveChoiceSummary"></p>
+    <div class="save-choice">
+      <button class="btn secondary block" id="btnDiscard">Non salvare</button>
+      <div class="row">
+        <input type="text" id="inTemplateName" placeholder="Nome allenamento (es. Corsa media 30 min)" style="flex:1">
+      </div>
+      <button class="btn block" id="btnSaveAsIs">Salva come preferito</button>
+      <div class="row">
+        <input type="number" id="inScalePercent" value="10" min="1" max="100" style="width:70px">
+        <span class="step-preview">% pi&ugrave; difficile</span>
+      </div>
+      <button class="btn secondary block" id="btnSaveScaled">Salva e crea variante pi&ugrave; difficile</button>
+    </div>
+  </div>
+</section>
+
+<!-- SCHERMATA: LIBRERIA -->
+<section id="screen-library" class="screen">
+  <div class="card">
+    <h2>Allenamenti salvati</h2>
+    <div id="templateList"></div>
+    <div class="empty-state" id="templateEmpty">Nessun allenamento salvato ancora. Registrane uno nella scheda "Registra".</div>
+  </div>
+
+  <div class="card" id="executionCard" hidden>
+    <h2>Allenamento in corso <span class="badge" id="execModeBadge">&mdash;</span></h2>
+    <div class="big-metric">
+      <div class="value" id="execCountdown">--:--</div>
+      <div class="label" id="execCurrentStep">&mdash;</div>
+    </div>
+    <p class="step-preview" id="execNextStep"></p>
+    <button class="btn danger block" id="btnStopExecution">Interrompi allenamento</button>
+  </div>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>
