@@ -1,5 +1,37 @@
 # Progetto: Fit Companion — App Tapis Roulant + Alimentazione + Peso Forma
 
+## 0. Stato al 25/09/2026 — riparti da qui
+
+**L'MVP è scritto, pubblicato e funzionante.** File in questa stessa cartella (`index.html`, `app.js`, `style.css`, `manifest.json`, `service-worker.js`), sincronizzati anche su GitHub e pubblicati come PWA su:
+
+**https://alesonaglioni-alt.github.io/fit-companion-t900d/**
+
+- Repository GitHub **pubblico** (`alesonaglioni-alt/fit-companion-t900d`) — è un passaggio **temporaneo solo per il test**, da cancellare una volta validato il protocollo (vedi "Prossimo passo bloccante" sotto).
+- Account GitHub creato (`alesonaglioni-alt`), `gh` CLI installato e autenticato su questo PC.
+- Server locale di test disponibile: `node C:\Users\Beor\Tools\static-server.js "C:\Users\Beor\OneDrive\Tapis Roulant" 8420` poi apri `http://localhost:8420/index.html` — utile per provare modifiche prima di pubblicarle.
+- **Attenzione cache**: GitHub Pages tiene i file 10 minuti in cache; il service worker ora la ignora (`cache: 'no-store'`) e usa strategia network-first, quindi non dovrebbe più servire versioni vecchie. Se mai ricapitasse: chiudere completamente l'app dal telefono (non solo uscire) e riaprirla.
+
+**Funzionalità già implementate e testate (almeno in simulazione da browser):**
+- Connessione BLE al T900D, lettura telemetria live (velocità/inclinazione/distanza/tempo/calorie/battito)
+- Test automatico "Request Control" alla connessione → mostra "Auto-drive" o "Guidato"
+- Controlli manuali (start/stop/imposta velocità/imposta inclinazione) se Auto-drive
+- Registrazione di un allenamento libero → compattazione automatica in step puliti
+- Salvataggio: "non salvare" / "salva come preferito" / "salva + crea variante +X% più difficile"
+- Libreria allenamenti con statistiche (minuti totali, velocità media e inclinazione media pesate sulla durata)
+- Creazione manuale di un allenamento (senza doverlo registrare dal vivo)
+- Modifica di un allenamento salvato (step singoli editabili)
+- "Avvia più difficile" mostra prima un'anteprima degli step scalati (modificabile) prima di premere Avvia
+- PWA installabile su Android (manifest + service worker)
+
+**🔴 Prossimo passo bloccante — non ancora fatto:** il test vero sul T900D fisico. Bisogna collegarsi davvero e leggere se compare **"Auto-drive (scrittura confermata)"** oppure **"Guidato"** sotto il pulsante di connessione. Da questo dipende se il motore di allenamenti personalizzati (§6.6) potrà mai pilotare da solo il tapis roulant, o se resterà sempre in modalità "coach a schermo".
+
+**Prossimo modulo da costruire (deciso, non ancora scritto):** scheda **"Salute"** con due sezioni — vedi §6.2/§6.4 per il dettaglio già concordato:
+- **Peso**: registrazione (pensata settimanale ma libera), peso forma target, storico con scostamento
+- **Alimentazione del giorno**: replica la Guida Alimentare Flessibile (pranzo/cena a tendine con le grammature, spuntini, bonus se "giorno di allenamento")
+- Limite accettato per ora: il toggle "giorno di allenamento" è **manuale**, non ancora collegato in automatico a uno storico allenamenti eseguiti (che non esiste ancora, vedi §6.3 — per ora esiste solo la libreria di allenamenti *riutilizzabili*, non un log datato di quelli *fatti*)
+
+**Deciso ma rimandato a dopo la validazione:** se il test T900D va bene, il passo successivo è impacchettare l'app con **Capacitor** in un vero `.apk` installabile una volta sola, senza hosting/HTTPS per sempre — sia per comodità sia perché **non possiamo chiamare o vendere l'app usando il nome "Domyos"** senza autorizzazione (vincolo trovato nelle risorse ufficiali Decathlon, §3). A quel punto il repository GitHub pubblico va cancellato.
+
 ## 1. Visione
 
 Non solo un telecomando per il tapis roulant Domyos T900D, ma un **assistente personale per il percorso verso il peso forma**, che mette in relazione tre dati che di solito restano separati:
@@ -173,21 +205,23 @@ src/
 
 ## 9. Roadmap proposta
 
-**Fase 0 — Validazione tecnica (da fare per prima, prima di scrivere il resto)**
-0. Test empirico sul T900D reale: la scrittura sul Control Point (`0x2AD9`) funziona? Determina se 6.1/6.5/6.6 saranno "auto-drive" o "guidato" (§3).
+**Fase 0 — Validazione tecnica**
+0. 🔴 **Da fare**: test empirico sul T900D reale (Auto-drive o Guidato?). L'app e pronta, manca solo la sessione vera col tapis roulant.
 
-**MVP (v1)**
-1. Connessione BLE + lettura dati live (funziona in ogni caso) + comandi manuali se il test di Fase 0 lo conferma.
-2. Diario peso con grafico e target.
-3. Storico allenamenti + **registrazione/compattazione in step e libreria "allenamenti salvati" con variante +X%** (§6.5) — indipendente dall'esito di Fase 0.
+**MVP (v1) — ✅ fatto**
+1. ✅ Connessione BLE + lettura dati live + comandi manuali (auto-rilevati in base all'esito del Control Point).
+2. ⬜ Diario peso con grafico e target — **prossimo modulo da costruire** (§0).
+3. ✅ Registrazione/compattazione in step, libreria "allenamenti salvati" con variante +X%, creazione manuale, modifica, anteprima prima dell'avvio (§6.5).
 
-**v2**
-4. Piano alimentare interattivo con checklist e gestione bonus giorno-allenamento.
-5. Motore allenamenti personalizzati basato su regole (peso + storico + libreria salvata).
+**v2 — in corso**
+4. ⬜ Piano alimentare interattivo con checklist e gestione bonus giorno-allenamento — **prossimo modulo da costruire** (§0), insieme al diario peso nella stessa scheda "Salute".
+5. ⬜ Motore allenamenti personalizzati basato su regole (peso + storico + libreria salvata) — richiede prima uno storico allenamenti *eseguiti* (non ancora costruito, vedi §6.3).
 
 **v3 (eventuale)**
 6. Statistiche avanzate/correlazioni.
 7. Raffinamento motore allenamenti.
+
+**Parallelo, dopo la validazione Fase 0**: impacchettamento con Capacitor in `.apk` reale e chiusura del repository pubblico temporaneo (vedi §0).
 
 ## 10. Decisioni ancora aperte
 
