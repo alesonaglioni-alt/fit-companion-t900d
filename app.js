@@ -366,12 +366,13 @@ function renderTemplateList() {
   $('templateEmpty').hidden = list.length > 0;
 
   list.slice().reverse().forEach(tpl => {
-    const totalSec = tpl.steps.reduce((a, s) => a + s.durationSec, 0);
+    const { totalSec, avgSpeed, avgIncline } = computeStats(tpl.steps);
+    const totalMin = Math.round(totalSec / 60);
     const div = document.createElement('div');
     div.className = 'template-item';
     div.innerHTML = `
       <div class="name">${escapeHtml(tpl.name)}</div>
-      <div class="meta">${tpl.steps.length} step &middot; ${fmtTime(totalSec)}</div>
+      <div class="meta">${tpl.steps.length} step &middot; ${totalMin} min (${fmtTime(totalSec)}) &middot; Vel. media ${avgSpeed.toFixed(1)} km/h &middot; Incl. media ${avgIncline.toFixed(1)}%</div>
       <div class="row">
         <button class="btn secondary" data-act="start">Avvia uguale</button>
         <input type="number" value="10" min="1" max="100" style="width:60px" data-role="pct">
@@ -390,6 +391,14 @@ function renderTemplateList() {
     });
     container.appendChild(div);
   });
+}
+
+function computeStats(steps) {
+  const totalSec = steps.reduce((a, s) => a + s.durationSec, 0);
+  if (!totalSec) return { totalSec: 0, avgSpeed: 0, avgIncline: 0 };
+  const avgSpeed = steps.reduce((a, s) => a + s.speedKmh * s.durationSec, 0) / totalSec;
+  const avgIncline = steps.reduce((a, s) => a + s.inclinePct * s.durationSec, 0) / totalSec;
+  return { totalSec, avgSpeed, avgIncline };
 }
 
 function escapeHtml(s) {
