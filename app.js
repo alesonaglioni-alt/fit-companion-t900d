@@ -321,6 +321,43 @@ function saveScaled() {
   discardRecording();
 }
 
+// ===== Creazione manuale allenamento =====
+function addBuilderStepRow(duration = 5, speed = 5.0, incline = 0) {
+  const container = $('builderSteps');
+  const row = document.createElement('div');
+  row.className = 'row builder-step';
+  row.innerHTML = `
+    <input type="number" class="stepDuration" value="${duration}" min="0.1" step="0.5" style="width:70px"> min
+    <input type="number" class="stepSpeed" value="${speed}" min="0" step="0.1" style="width:70px"> km/h
+    <input type="number" class="stepIncline" value="${incline}" min="0" step="0.5" style="width:70px"> %
+    <button class="btn danger" type="button">&#10005;</button>
+  `;
+  row.querySelector('button').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+function saveBuilderTemplate() {
+  const name = $('inBuilderName').value.trim();
+  const rows = document.querySelectorAll('#builderSteps .builder-step');
+  if (!name) { log('Inserisci un nome per l\'allenamento.', 'err'); return; }
+  if (!rows.length) { log('Aggiungi almeno uno step.', 'err'); return; }
+  const steps = Array.from(rows).map(row => ({
+    durationSec: Math.round(parseFloat(row.querySelector('.stepDuration').value) * 60),
+    speedKmh: parseFloat(row.querySelector('.stepSpeed').value),
+    inclinePct: parseFloat(row.querySelector('.stepIncline').value)
+  })).filter(s => s.durationSec > 0 && !isNaN(s.speedKmh) && !isNaN(s.inclinePct));
+
+  if (!steps.length) { log('Controlla i valori inseriti negli step.', 'err'); return; }
+
+  addTemplate({ id: crypto.randomUUID(), name, steps, createdAt: Date.now() });
+  log(`Allenamento "${name}" creato manualmente (${steps.length} step).`);
+
+  $('inBuilderName').value = '';
+  $('builderSteps').innerHTML = '';
+  addBuilderStepRow();
+  renderTemplateList();
+}
+
 // ===== Libreria allenamenti =====
 function renderTemplateList() {
   const list = loadTemplates();
@@ -447,6 +484,9 @@ $('btnDiscard').addEventListener('click', discardRecording);
 $('btnSaveAsIs').addEventListener('click', saveAsIs);
 $('btnSaveScaled').addEventListener('click', saveScaled);
 $('btnStopExecution').addEventListener('click', () => stopExecution(false));
+$('btnAddBuilderStep').addEventListener('click', () => addBuilderStepRow());
+$('btnSaveBuilder').addEventListener('click', saveBuilderTemplate);
+addBuilderStepRow();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js').catch(e => log('Service worker non registrato: ' + e.message, 'err'));

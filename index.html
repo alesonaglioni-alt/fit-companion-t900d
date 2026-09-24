@@ -116,6 +116,18 @@
 <!-- SCHERMATA: LIBRERIA -->
 <section id="screen-library" class="screen">
   <div class="card">
+    <h2>Crea un nuovo allenamento</h2>
+    <div class="row">
+      <input type="text" id="inBuilderName" placeholder="Nome allenamento" style="flex:1">
+    </div>
+    <div id="builderSteps"></div>
+    <div class="row">
+      <button class="btn secondary" id="btnAddBuilderStep" type="button">+ Aggiungi step</button>
+    </div>
+    <button class="btn block" id="btnSaveBuilder">Salva allenamento</button>
+  </div>
+
+  <div class="card">
     <h2>Allenamenti salvati</h2>
     <div id="templateList"></div>
     <div class="empty-state" id="templateEmpty">Nessun allenamento salvato ancora. Registrane uno nella scheda "Registra".</div>
