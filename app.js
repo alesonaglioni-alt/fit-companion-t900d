@@ -243,6 +243,10 @@ function onTreadmillData(event) {
   catch (e) { log('Errore parsing telemetria: ' + e.message, 'err'); }
 }
 
+// Risposta in sospeso: il comando in corso aspetta la Indication con l'esito
+// reale (non basta che la scrittura Bluetooth vada a buon fine).
+let pendingResponse = null; // { opcode, resolve }
+
 function onControlPointResponse(event) {
   const dv = event.target.value;
   if (dv.byteLength >= 3 && dv.getUint8(0) === 0x80) {
@@ -254,11 +258,16 @@ function onControlPointResponse(event) {
       state.controlWritable = (resultCode === 1);
       updateControlModeUI();
     }
+    if (pendingResponse && pendingResponse.opcode === requestOpCode) {
+      pendingResponse.resolve(resultCode === 1);
+      pendingResponse = null;
+    }
   }
 }
 
 // Il Bluetooth non permette due scritture contemporanee sullo stesso dispositivo:
-// mettiamo ogni comando in coda così parte solo dopo che il precedente è finito.
+// mettiamo ogni comando in coda così parte solo dopo che il precedente ha
+// ricevuto una risposta reale dal tapis roulant (o ha esaurito i tentativi).
 let writeQueue = Promise.resolve();
 
 function writeControlPoint(bytes, label) {
@@ -266,15 +275,41 @@ function writeControlPoint(bytes, label) {
   return writeQueue;
 }
 
+const WRITE_MAX_ATTEMPTS = 3;
+const WRITE_RESPONSE_TIMEOUT_MS = 2000;
+
 async function doWriteControlPoint(bytes, label) {
-  if (!state.controlPointChar) { log('Control Point non disponibile: ' + label, 'err'); return; }
-  try {
-    const buf = new Uint8Array(bytes);
-    log(`TX ${label}`, 'tx');
-    await state.controlPointChar.writeValueWithResponse(buf);
-  } catch (e) {
-    log(`Errore inviando "${label}": ${e.message}`, 'err');
+  if (!state.controlPointChar) { log('Control Point non disponibile: ' + label, 'err'); return false; }
+  const opcode = bytes[0];
+
+  for (let attempt = 1; attempt <= WRITE_MAX_ATTEMPTS; attempt++) {
+    try {
+      const buf = new Uint8Array(bytes);
+      log(`TX ${label}${attempt > 1 ? ` (tentativo ${attempt}/${WRITE_MAX_ATTEMPTS})` : ''}`, 'tx');
+
+      const waitForResponse = new Promise(resolve => { pendingResponse = { opcode, resolve }; });
+      await state.controlPointChar.writeValueWithResponse(buf);
+
+      const outcome = await Promise.race([
+        waitForResponse,
+        new Promise(resolve => setTimeout(() => resolve('timeout'), WRITE_RESPONSE_TIMEOUT_MS))
+      ]);
+
+      if (outcome === true) return true;
+      if (outcome === false) {
+        // Il tapis roulant ha risposto ma ha rifiutato il comando: riprovare non cambierebbe nulla.
+        pendingResponse = null;
+        return false;
+      }
+      pendingResponse = null;
+      log(`Nessuna risposta per "${label}" entro ${WRITE_RESPONSE_TIMEOUT_MS / 1000}s.`, 'err');
+    } catch (e) {
+      pendingResponse = null;
+      log(`Errore inviando "${label}": ${e.message}`, 'err');
+    }
   }
+  log(`"${label}" non confermato dopo ${WRITE_MAX_ATTEMPTS} tentativi.`, 'err');
+  return false;
 }
 
 function cmdRequestControl() { return writeControlPoint([0x00], 'Request Control'); }
