@@ -24,6 +24,7 @@
   <button data-screen="live" class="active">Live</button>
   <button data-screen="record">Registra</button>
   <button data-screen="library">Allenamenti</button>
+  <button data-screen="history">Storico</button>
 </nav>
 
 <!-- SCHERMATA: LIVE / CONNESSIONE -->
@@ -49,6 +50,16 @@
     </div>
   </div>
 
+  <div class="card" id="executionCard" hidden>
+    <h2><span id="execWorkoutName">Allenamento in corso</span> <span class="badge" id="execModeBadge">&mdash;</span></h2>
+    <div class="big-metric">
+      <div class="value" id="execCountdown">--:--</div>
+      <div class="label" id="execCurrentStep">&mdash;</div>
+    </div>
+    <p class="step-preview" id="execNextStep"></p>
+    <button class="btn danger block" id="btnStopExecution">Interrompi allenamento</button>
+  </div>
+
   <div class="card" id="manualControlCard" hidden>
     <h2>Controllo manuale</h2>
     <div class="row">
@@ -63,6 +74,7 @@
       <input type="number" id="inIncline" step="0.5" min="0" max="15" value="1.0" style="width:90px">
       <button class="btn secondary" id="btnSetIncline">Imposta inclinazione (%)</button>
     </div>
+    <p class="step-preview" id="inclineNote" hidden>Questo tapis roulant non dichiara supporto al controllo remoto dell'inclinazione (verificato leggendo le sue funzionalità FTMS) — regolala manualmente sui tasti fisici.</p>
   </div>
 
   <div class="card">
@@ -148,14 +160,14 @@
     </div>
   </div>
 
-  <div class="card" id="executionCard" hidden>
-    <h2>Allenamento in corso <span class="badge" id="execModeBadge">&mdash;</span></h2>
-    <div class="big-metric">
-      <div class="value" id="execCountdown">--:--</div>
-      <div class="label" id="execCurrentStep">&mdash;</div>
-    </div>
-    <p class="step-preview" id="execNextStep"></p>
-    <button class="btn danger block" id="btnStopExecution">Interrompi allenamento</button>
+</section>
+
+<!-- SCHERMATA: STORICO -->
+<section id="screen-history" class="screen">
+  <div class="card">
+    <h2>Log allenamenti</h2>
+    <div id="historyList"></div>
+    <div class="empty-state" id="historyEmpty">Nessun allenamento ancora completato. Avviane uno dalla scheda "Allenamenti".</div>
   </div>
 </section>
 

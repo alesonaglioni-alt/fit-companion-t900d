@@ -4,6 +4,7 @@
 const FTMS_SERVICE = 0x1826;
 const TREADMILL_DATA_CHAR = 0x2acd;
 const CONTROL_POINT_CHAR = 0x2ad9;
+const MACHINE_FEATURE_CHAR = 0x2acc;
 
 const RESULT_CODES = {
   1: 'Success', 2: 'Op Code Not Supported', 3: 'Invalid Parameter',
@@ -11,6 +12,7 @@ const RESULT_CODES = {
 };
 
 const STORAGE_KEY = 'fitcompanion_templates_v1';
+const HISTORY_KEY = 'fitcompanion_history_v1';
 
 // ===== Stato globale =====
 const state = {
@@ -19,7 +21,8 @@ const state = {
   treadmillChar: null,
   controlPointChar: null,
   controlWritable: null, // null = non ancora testato, true/false dopo il test
-  telemetry: { speed: 0, incline: 0 },
+  inclineSupported: null, // null = sconosciuto, true/false dopo la lettura della Machine Feature
+  telemetry: { speed: 0, incline: 0, calories: undefined, elapsedSec: undefined },
   recording: { active: false, samples: [], startTime: 0, timerId: null },
   execution: null // { steps, idx, mode, timerId, template }
 };
@@ -51,14 +54,16 @@ function fmtTime(totalSec) {
 }
 
 // ===== Navigazione tab =====
+function activateScreen(name) {
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.screen === name));
+  document.querySelectorAll('section.screen').forEach(s => s.classList.remove('active'));
+  $('screen-' + name).classList.add('active');
+  if (name === 'library') renderTemplateList();
+  if (name === 'history') renderHistoryList();
+}
+
 document.querySelectorAll('nav.tabs button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('section.screen').forEach(s => s.classList.remove('active'));
-    btn.classList.add('active');
-    $('screen-' + btn.dataset.screen).classList.add('active');
-    if (btn.dataset.screen === 'library') renderTemplateList();
-  });
+  btn.addEventListener('click', () => activateScreen(btn.dataset.screen));
 });
 
 // ===== Bluetooth: connessione =====
@@ -95,6 +100,20 @@ async function connect() {
       updateControlModeUI();
     }
 
+    try {
+      const featureChar = await service.getCharacteristic(MACHINE_FEATURE_CHAR);
+      const featureVal = await featureChar.readValue();
+      // Machine Feature: 4 byte "Fitness Machine Features" + 4 byte "Target Setting Features".
+      // Bit 1 del secondo campo = "Inclination Target Setting Supported" (spec FTMS).
+      const targetSettingFeatures = featureVal.getUint32(4, true);
+      state.inclineSupported = (targetSettingFeatures & (1 << 1)) !== 0;
+      log(`Il tapis roulant dichiara supporto inclinazione remota: ${state.inclineSupported ? 'sì' : 'no'}.`);
+    } catch (e) {
+      state.inclineSupported = null;
+      log('Machine Feature non leggibile, supporto inclinazione sconosciuto: ' + e.message, 'err');
+    }
+    updateInclineControlUI();
+
     await requestWakeLock();
 
     setConnStatus('Connesso a ' + (state.device.name || 'tapis roulant'), 'ok');
@@ -113,6 +132,13 @@ async function testControlWritable() {
   await writeControlPoint([0x00], 'Request Control (test)');
   // La risposta arriva async via onControlPointResponse, che aggiorna state.controlWritable.
   setTimeout(updateControlModeUI, 1500);
+}
+
+function updateInclineControlUI() {
+  const disabled = state.inclineSupported === false;
+  $('inIncline').disabled = disabled;
+  $('btnSetIncline').disabled = disabled;
+  $('inclineNote').hidden = !disabled;
 }
 
 function updateControlModeUI() {
@@ -191,6 +217,8 @@ function parseTreadmillData(dv) {
 
   state.telemetry.speed = speed;
   state.telemetry.incline = incline;
+  if (calories !== undefined) state.telemetry.calories = calories;
+  if (elapsed !== undefined) state.telemetry.elapsedSec = elapsed;
 
   $('tSpeed').textContent = speed.toFixed(2) + ' km/h';
   $('tIncline').textContent = incline.toFixed(1) + ' %';
@@ -203,6 +231,10 @@ function parseTreadmillData(dv) {
     state.recording.samples.push({ t: Date.now(), speed, incline });
     $('recSpeed').textContent = speed.toFixed(2) + ' km/h';
     $('recIncline').textContent = incline.toFixed(1) + ' %';
+  }
+
+  if (state.execution) {
+    state.execution.samples.push({ speed, incline });
   }
 }
 
@@ -459,11 +491,16 @@ function beep() {
   } catch (e) { /* audio non disponibile, non bloccante */ }
 }
 
-function startExecutionWithSteps(steps) {
+function startExecutionWithSteps(steps, name) {
   const mode = state.controlWritable === true ? 'auto' : 'guided';
-  state.execution = { steps, idx: -1, mode, timerId: null, remaining: 0, beeped: false };
+  state.execution = {
+    steps, idx: -1, mode, timerId: null, remaining: 0, beeped: false,
+    name: name || 'Allenamento', startedAt: Date.now(), samples: []
+  };
 
+  activateScreen('live');
   $('executionCard').hidden = false;
+  $('execWorkoutName').textContent = state.execution.name;
   $('execModeBadge').textContent = mode === 'auto' ? 'Auto-drive' : 'Guidato';
   $('execModeBadge').className = 'badge' + (mode === 'guided' ? ' guided' : '');
 
@@ -475,7 +512,7 @@ function startExecutionWithSteps(steps) {
 
 function startExecution(template, factor, target) {
   const steps = factor !== 1 ? scaleSteps(template.steps, factor, target) : template.steps;
-  startExecutionWithSteps(steps);
+  startExecutionWithSteps(steps, template.name);
 }
 
 // ===== Editor step riutilizzabile: modifica un allenamento salvato, o anteprima "avvia più difficile" =====
@@ -504,7 +541,7 @@ function readStepsFromContainer(container) {
 }
 
 function openStepEditor(mode, template, steps) {
-  stepEditorState = { mode, templateId: template.id };
+  stepEditorState = { mode, templateId: template.id, templateName: template.name };
   $('stepEditorTitle').textContent = mode === 'edit' ? 'Modifica allenamento' : 'Anteprima: avvia più difficile';
   $('editTemplateName').value = template.name;
   $('editTemplateName').disabled = (mode !== 'edit');
@@ -539,8 +576,9 @@ function confirmStepEditor() {
     closeStepEditor();
     renderTemplateList();
   } else {
+    const name = stepEditorState.templateName;
     closeStepEditor();
-    startExecutionWithSteps(steps);
+    startExecutionWithSteps(steps, `${name} (più difficile)`);
   }
 }
 
@@ -561,7 +599,7 @@ function nextStep() {
 
   if (ex.mode === 'auto') {
     cmdSetSpeed(step.speedKmh);
-    cmdSetIncline(step.inclinePct);
+    if (state.inclineSupported !== false) cmdSetIncline(step.inclinePct);
   } else {
     beep();
   }
@@ -583,10 +621,58 @@ function stopExecution(completed) {
   if (state.execution) {
     clearInterval(state.execution.timerId);
     if (state.execution.mode === 'auto') cmdStop();
+    saveHistoryEntry(state.execution, completed);
   }
   state.execution = null;
   $('executionCard').hidden = true;
   log(completed ? 'Allenamento completato.' : 'Allenamento interrotto.');
+}
+
+// ===== Storico allenamenti eseguiti =====
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+  catch (e) { return []; }
+}
+function saveHistory(list) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+}
+
+function saveHistoryEntry(execution, completed) {
+  const samples = execution.samples;
+  const avgSpeed = samples.length ? samples.reduce((a, s) => a + s.speed, 0) / samples.length : 0;
+  const avgIncline = samples.length ? samples.reduce((a, s) => a + s.incline, 0) / samples.length : 0;
+  const totalSec = Math.round((Date.now() - execution.startedAt) / 1000);
+  const list = loadHistory();
+  list.push({
+    id: crypto.randomUUID(),
+    date: new Date().toISOString(),
+    name: execution.name,
+    totalSec,
+    avgSpeed,
+    avgIncline,
+    calories: state.telemetry.calories !== undefined ? state.telemetry.calories : null,
+    completed
+  });
+  saveHistory(list);
+}
+
+function renderHistoryList() {
+  const list = loadHistory();
+  const container = $('historyList');
+  container.innerHTML = '';
+  $('historyEmpty').hidden = list.length > 0;
+
+  list.slice().reverse().forEach(entry => {
+    const d = new Date(entry.date);
+    const dateStr = d.toLocaleDateString('it-IT') + ' ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    const div = document.createElement('div');
+    div.className = 'template-item';
+    div.innerHTML = `
+      <div class="name">${escapeHtml(entry.name)}${entry.completed ? '' : ' <span class="badge guided">interrotto</span>'}</div>
+      <div class="meta">${dateStr} &middot; ${fmtTime(entry.totalSec)} &middot; Vel. media ${entry.avgSpeed.toFixed(1)} km/h &middot; Incl. media ${entry.avgIncline.toFixed(1)}% &middot; ${entry.calories !== null ? entry.calories + ' kcal' : 'calorie n/d'}</div>
+    `;
+    container.appendChild(div);
+  });
 }
 
 // ===== Event listeners =====
