@@ -95,6 +95,8 @@ async function connect() {
       updateControlModeUI();
     }
 
+    await requestWakeLock();
+
     setConnStatus('Connesso a ' + (state.device.name || 'tapis roulant'), 'ok');
     $('btnConnect').disabled = true;
     $('btnDisconnect').disabled = false;
@@ -132,12 +134,36 @@ function onDisconnected() {
   $('btnDisconnect').disabled = true;
   $('btnStartRecording').disabled = true;
   $('recordDisabledHint').hidden = false;
+  releaseWakeLock();
   log('Dispositivo disconnesso.');
 }
 
 function disconnect() {
   if (state.device && state.device.gatt.connected) state.device.gatt.disconnect();
 }
+
+// ===== Wake Lock: evita che lo schermo si spenga durante l'uso, causa comune
+// di disconnessioni Bluetooth in background su Android =====
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+  } catch (e) {
+    log('Wake lock non disponibile: ' + e.message, 'err');
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.device && state.device.gatt.connected) {
+    requestWakeLock();
+  }
+});
 
 // ===== Parsing Treadmill Data =====
 function parseTreadmillData(dv) {
@@ -199,7 +225,16 @@ function onControlPointResponse(event) {
   }
 }
 
-async function writeControlPoint(bytes, label) {
+// Il Bluetooth non permette due scritture contemporanee sullo stesso dispositivo:
+// mettiamo ogni comando in coda così parte solo dopo che il precedente è finito.
+let writeQueue = Promise.resolve();
+
+function writeControlPoint(bytes, label) {
+  writeQueue = writeQueue.then(() => doWriteControlPoint(bytes, label));
+  return writeQueue;
+}
+
+async function doWriteControlPoint(bytes, label) {
   if (!state.controlPointChar) { log('Control Point non disponibile: ' + label, 'err'); return; }
   try {
     const buf = new Uint8Array(bytes);
